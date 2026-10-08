@@ -1,0 +1,38 @@
+/* Light Mode (Default) */
+:root {
+  --bg-color: #fafafa;
+  --card-bg: #ffffff;
+  --text-color: #262626;
+  --text-muted: #8e8e8e;
+  --border-color: #dbdbdb;
+  --hover-bg: #f0f0f0;
+}
+
+/* Dark Mode Overrides */
+body.dark-mode {
+  --bg-color: #121212;
+  --card-bg: #1e1e1e;
+  --text-color: #f5f5f5;
+  --text-muted: #a8a8a8;
+  --border-color: #2d2d2d;
+  --hover-bg: #2a2a2a;
+}
+
+/* Apply Variables to Base Elements */
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.card, .post-card, .sidebar, .nav-bar, .modal-content, .search-box {
+  background-color: var(--card-bg) !important;
+  color: var(--text-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+input, textarea, select {
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+}
