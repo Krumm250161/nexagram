@@ -1,5 +1,5 @@
 <?php
-// profile.php - Nexagram Profile with Post Management (Edit & Delete)
+// profile.php - Nexagram Profile with Post Management (Edit & Delete & Visibility)
 session_start();
 require_once 'config.php';
 require_once 'lang.php';
@@ -41,13 +41,20 @@ if ($is_own_profile && isset($_POST['action']) && $_POST['action'] === 'delete_p
     exit();
 }
 
-// --- HANDLE POST EDIT ACTION ---
+// --- HANDLE POST EDIT ACTION (CAPTION & VISIBILITY) ---
 if ($is_own_profile && isset($_POST['action']) && $_POST['action'] === 'edit_post') {
     $edit_post_id = (int)$_POST['post_id'];
     $new_caption = trim($_POST['caption'] ?? '');
+    $new_visibility = $_POST['visibility'] ?? 'public';
 
-    $stmt = $pdo->prepare("UPDATE posts SET caption = ? WHERE id = ? AND user_id = ?");
-    $stmt->execute([$new_caption, $edit_post_id, $logged_in_user_id]);
+    // Allowed privacy options
+    $allowed_visibilities = ['public', 'followers', 'friends', 'only_me'];
+    if (!in_array($new_visibility, $allowed_visibilities)) {
+        $new_visibility = 'public';
+    }
+
+    $stmt = $pdo->prepare("UPDATE posts SET caption = ?, visibility = ? WHERE id = ? AND user_id = ?");
+    $stmt->execute([$new_caption, $new_visibility, $edit_post_id, $logged_in_user_id]);
 
     header("Location: profile.php?id=" . $profile_user_id);
     exit();
@@ -186,7 +193,7 @@ function resolveImagePath($fileName) {
         .user-bio { font-size: 14.5px; color: var(--text-main); line-height: 1.5; }
 
         .posts-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-        .grid-card { aspect-ratio: 1 / 1; border-radius: 16px; overflow: hidden; position: relative; background: var(--card-bg); border: 1px solid var(--card-border); }
+        .grid-card { aspect-ratio: 1 / 1; border-radius: 16px; overflow: hidden; position: relative; background: var(--card-bg); border: 1px solid var(--card-border); display: block; text-decoration: none; }
         .grid-media { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s ease; }
         .grid-card:hover .grid-media { transform: scale(1.06); }
 
@@ -194,7 +201,9 @@ function resolveImagePath($fileName) {
         .grid-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(3px); display: flex; flex-direction: column; justify-content: space-between; padding: 16px; opacity: 0; transition: opacity 0.25s ease; color: #ffffff; z-index: 2; }
         .grid-card:hover .grid-overlay { opacity: 1; }
 
-        .overlay-top-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        .overlay-top-actions { display: flex; justify-content: space-between; align-items: center; }
+        .visibility-badge { font-size: 13px; font-weight: 600; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 20px; display: flex; align-items: center; gap: 6px; }
+        .top-right-btns { display: flex; gap: 8px; }
         .action-btn { background: rgba(255, 255, 255, 0.2); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s, transform 0.2s; }
         .action-btn:hover { background: rgba(255, 255, 255, 0.4); transform: scale(1.1); }
         .action-btn.btn-delete:hover { background: #ef4444; }
@@ -208,8 +217,12 @@ function resolveImagePath($fileName) {
         .modal-box { background: var(--sidebar-bg); border: 1px solid var(--card-border); border-radius: 20px; width: 100%; max-width: 480px; padding: 24px; box-shadow: var(--glass-shadow); color: var(--text-main); }
         .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
         .modal-close { cursor: pointer; color: var(--text-sub); }
-        .modal-textarea { width: 100%; height: 110px; background: var(--hover-bg); border: 1px solid var(--card-border); border-radius: 12px; color: var(--text-main); padding: 12px; font-size: 14px; outline: none; resize: none; margin-bottom: 20px; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 12px; }
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--text-sub); }
+        .modal-textarea { width: 100%; height: 100px; background: var(--hover-bg); border: 1px solid var(--card-border); border-radius: 12px; color: var(--text-main); padding: 12px; font-size: 14px; outline: none; resize: none; }
+        .modal-select { width: 100%; background: var(--hover-bg); border: 1px solid var(--card-border); border-radius: 12px; color: var(--text-main); padding: 10px 14px; font-size: 14px; outline: none; cursor: pointer; }
+        .modal-select option { background: var(--sidebar-bg); color: var(--text-main); }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
         .btn-cancel { padding: 10px 18px; border-radius: 10px; background: transparent; border: 1px solid var(--card-border); color: var(--text-main); cursor: pointer; font-weight: 600; }
         .btn-save { padding: 10px 18px; border-radius: 10px; background: #3b82f6; border: none; color: #fff; cursor: pointer; font-weight: 700; }
     </style>
@@ -295,8 +308,10 @@ function resolveImagePath($fileName) {
                             $raw_file = $post['image_url'] ?? $post['image_path'] ?? $post['image'] ?? $post['file_path'] ?? $post['media_url'] ?? null;
                             $caption = $post['caption'] ?? $post['content'] ?? '';
                             $media_src = resolveImagePath($raw_file);
+                            $visibility = $post['visibility'] ?? 'public';
                         ?>
-                        <div class="grid-card">
+                        <!-- Clicking card navigates to index.php with target post ID and anchor -->
+                        <a href="index.php?post_id=<?php echo $post['id']; ?>#post_<?php echo $post['id']; ?>" class="grid-card">
                             <?php if (!empty($media_src)): ?>
                                 <?php if (preg_match('/\.(mp4|webm|ogg)$/i', $media_src)): ?>
                                     <video src="<?php echo htmlspecialchars($media_src); ?>" class="grid-media"></video>
@@ -305,24 +320,36 @@ function resolveImagePath($fileName) {
                                 <?php endif; ?>
                             <?php endif; ?>
 
-                            <!-- Hover Overlay with Edit/Delete Controls -->
+                            <!-- Hover Overlay with Privacy, Edit & Delete Controls -->
                             <div class="grid-overlay">
-                                <?php if ($is_own_profile): ?>
-                                    <div class="overlay-top-actions">
-                                        <button class="action-btn" title="<?php echo __('edit_caption_tooltip'); ?>" onclick="openEditModal(<?php echo $post['id']; ?>, '<?php echo addslashes(htmlspecialchars($caption)); ?>')">
-                                            <i class="fa-solid fa-pen"></i>
-                                        </button>
-                                        <form method="POST" onsubmit="return confirm('<?php echo addslashes(__('confirm_delete_post')); ?>');">
-                                            <input type="hidden" name="action" value="delete_post">
-                                            <input type="hidden" name="post_id" value="<?php echo $post['id']; ?>">
-                                            <button type="submit" class="action-btn btn-delete" title="<?php echo __('delete_post_tooltip'); ?>">
-                                                <i class="fa-solid fa-trash"></i>
-                                            </button>
-                                        </form>
+                                <div class="overlay-top-actions">
+                                    <div class="visibility-badge">
+                                        <?php if ($visibility === 'followers'): ?>
+                                            <i class="fa-solid fa-users"></i> Followers
+                                        <?php elseif ($visibility === 'friends'): ?>
+                                            <i class="fa-solid fa-user-group"></i> Friends
+                                        <?php elseif ($visibility === 'only_me'): ?>
+                                            <i class="fa-solid fa-lock"></i> Only Me
+                                        <?php else: ?>
+                                            <i class="fa-solid fa-globe"></i> Public
+                                        <?php endif; ?>
                                     </div>
-                                <?php else: ?>
-                                    <div></div>
-                                <?php endif; ?>
+
+                                    <?php if ($is_own_profile): ?>
+                                        <div class="top-right-btns">
+                                            <button type="button" class="action-btn" title="<?php echo __('edit_caption_tooltip'); ?>" onclick="event.stopPropagation(); event.preventDefault(); openEditModal(<?php echo $post['id']; ?>, '<?php echo addslashes(htmlspecialchars($caption)); ?>', '<?php echo $visibility; ?>')">
+                                                <i class="fa-solid fa-pen"></i>
+                                            </button>
+                                            <form method="POST" onclick="event.stopPropagation();" onsubmit="return confirm('<?php echo addslashes(__('confirm_delete_post')); ?>');">
+                                                <input type="hidden" name="action" value="delete_post">
+                                                <input type="hidden" name="post_id" value="<?php echo $post['id']; ?>">
+                                                <button type="submit" class="action-btn btn-delete" title="<?php echo __('delete_post_tooltip'); ?>">
+                                                    <i class="fa-solid fa-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
 
                                 <div class="overlay-center-stats">
                                     <div class="overlay-item"><i class="fa-solid fa-heart"></i> <?php echo $post['like_count']; ?></div>
@@ -333,7 +360,7 @@ function resolveImagePath($fileName) {
                                     <div class="card-caption-tag"><?php echo htmlspecialchars($caption); ?></div>
                                 <?php endif; ?>
                             </div>
-                        </div>
+                        </a>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
@@ -341,17 +368,32 @@ function resolveImagePath($fileName) {
         </div>
     </main>
 
-    <!-- Modal for Editing Post Caption -->
+    <!-- Modal for Editing Post Caption & Privacy -->
     <div class="modal-overlay" id="editModal">
         <div class="modal-box">
             <div class="modal-title">
-                <span><?php echo __('edit_caption_title'); ?></span>
+                <span>Edit Post</span>
                 <i class="fa-solid fa-xmark modal-close" onclick="closeEditModal()"></i>
             </div>
             <form method="POST">
                 <input type="hidden" name="action" value="edit_post">
                 <input type="hidden" name="post_id" id="modalPostId">
-                <textarea name="caption" id="modalCaption" class="modal-textarea" placeholder="<?php echo __('write_caption_placeholder'); ?>"></textarea>
+                
+                <div class="form-group">
+                    <label class="form-label">Caption</label>
+                    <textarea name="caption" id="modalCaption" class="modal-textarea" placeholder="<?php echo __('write_caption_placeholder'); ?>"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Privacy Setting</label>
+                    <select name="visibility" id="modalVisibility" class="modal-select">
+                        <option value="public">🌐 Public</option>
+                        <option value="followers">👥 Followers-Only</option>
+                        <option value="friends">🤝 Friends-Only</option>
+                        <option value="only_me">🔒 Only Me</option>
+                    </select>
+                </div>
+
                 <div class="modal-actions">
                     <button type="button" class="btn-cancel" onclick="closeEditModal()"><?php echo __('btn_cancel'); ?></button>
                     <button type="submit" class="btn-save"><?php echo __('btn_save'); ?></button>
@@ -383,9 +425,10 @@ function resolveImagePath($fileName) {
         });
 
         // Edit Post Modal Handlers
-        function openEditModal(postId, currentCaption) {
+        function openEditModal(postId, currentCaption, currentVisibility) {
             document.getElementById('modalPostId').value = postId;
             document.getElementById('modalCaption').value = currentCaption;
+            document.getElementById('modalVisibility').value = currentVisibility || 'public';
             document.getElementById('editModal').style.display = 'flex';
         }
 
